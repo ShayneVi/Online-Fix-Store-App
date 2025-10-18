@@ -10,7 +10,7 @@ This desktop application provides an easy-to-use interface for accessing online 
 
 ## Features
 
-- **700+ Games** - Extensive library of game fixes with more added weekly
+- **800+ Games** - Extensive library of game fixes with more added weekly
 - **Instant Installation** - Download and auto-extract fixes directly to your game folder
 - **Steam Integration** - Fetch game details, images, and Metacritic scores
 - **Co-Op Information** - View multiplayer details from Co-Optimus
@@ -66,6 +66,7 @@ Some may have more to do, make sure to read the read me text that comes with it.
 Currently features **700+ games** with more added weekly. Some games may be missing due to:
 - File size limitations (GitHub free plan has 50MB limit per file)
 - Occasionally overlooked games
+- Only games playable through steam are in the app. If its a game playable through microsoft store or Epic game store, it won't be in the app.
 
 If a game is missing or a fix isn't working, please contact me with the details and I will look into it.
 
@@ -73,7 +74,6 @@ If a game is missing or a fix isn't working, please contact me with the details 
 
 **Fix Not Working?**
 - The game may have updated, requiring a newer fix
-- You may need a specific version (e.g., Microsoft Store vs Steam)
 - Contact me for assistance
 
 **Game Missing?**
