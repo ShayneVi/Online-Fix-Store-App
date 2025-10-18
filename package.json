@@ -1,0 +1,58 @@
+{
+  "name": "online-fix-store",
+  "version": "1.0.0",
+  "description": "Online Fix Store Desktop Application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win"
+  },
+  "keywords": [],
+  "author": "ShayneVi",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.online-fix-store.app",
+    "productName": "Online Fix Store",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "README.md",
+      "icon.ico",
+      "icon.png",
+      "logo online fix store.png",
+      "online fix store wallpaper.png",
+      "wallpaper online fix store blanc.png",
+      "online fix store menu song.mp3",
+      "*.png",
+      "*.mp3"
+    ]
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1",
+    "iconv-lite": "^0.7.0"
+  }
+}
