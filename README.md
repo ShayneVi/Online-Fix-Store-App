@@ -63,7 +63,7 @@ For bypasses, you download the folder, extract it and copy its content to your g
 Some may have more to do, make sure to read the read me text that comes with it.
 
 ### Game Availability
-Currently features **700+ games** with more added weekly. Some games may be missing due to:
+Currently features **800+ games** with more added weekly. Some games may be missing due to:
 - File size limitations (GitHub free plan has 50MB limit per file)
 - Occasionally overlooked games
 - Only games playable through steam are in the app. If its a game playable through microsoft store or Epic game store, it won't be in the app.
@@ -74,6 +74,7 @@ If a game is missing or a fix isn't working, please contact me with the details 
 
 **Fix Not Working?**
 - The game may have updated, requiring a newer fix
+- Your anti-virus may have flagged and quarantine the onlinefix64.dll - To fix that either turn off your anti-virus the time that you play, or make an exclusion, so the game's folder is not monitored anymore.
 - Contact me for assistance
 
 **Game Missing?**
