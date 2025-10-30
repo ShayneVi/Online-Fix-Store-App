@@ -1,6 +1,6 @@
 # OnlineFixStore - Desktop
 
-Welcome to the **OnlineFixStore Desktop App** - your one-stop solution for browsing and downloading online multiplayer fixes for over 700+ games!
+Welcome to the **OnlineFixStore Desktop App** - your one-stop solution for browsing and downloading online multiplayer fixes for over 1200+ games!
 
 ## About
 
@@ -10,7 +10,7 @@ This desktop application provides an easy-to-use interface for accessing online 
 
 ## Features
 
-- **1000+ Games** - Extensive library of game fixes with more added weekly
+- **1200+ Games** - Extensive library of game fixes with more added weekly
 - **Instant Installation** - Download and auto-extract fixes directly to your game folder
 - **Steam Integration** - Fetch game details, images, and Metacritic scores
 - **Co-Op Information** - View multiplayer details from Co-Optimus
