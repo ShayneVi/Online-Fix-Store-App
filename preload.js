@@ -10,5 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   downloadAndExtractFix: (url, targetFolder, appID, fileName) => ipcRenderer.invoke('download-extract-fix', url, targetFolder, appID, fileName),
   downloadBypass: (url, fileName) => ipcRenderer.invoke('download-bypass', url, fileName),
-  readReadme: () => ipcRenderer.invoke('read-readme')
+  readReadme: () => ipcRenderer.invoke('read-readme'),
+  getSteamAppList: () => ipcRenderer.invoke('get-steam-applist'),
+  updateOnlineFixAppIDs: () => ipcRenderer.invoke('update-onlinefix-appids')
 });

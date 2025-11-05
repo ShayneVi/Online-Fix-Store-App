@@ -1,5 +1,99 @@
 const { app, BrowserWindow, ipcMain, Notification, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
+
+// Steam App List Cache Configuration
+const STEAM_APPLIST_URL = 'https://api.steampowered.com/ISteamApps/GetAppList/v2/';
+const CACHE_DIR = path.join(app.getPath('userData'), 'cache');
+const APPLIST_CACHE_FILE = path.join(CACHE_DIR, 'steam_applist.json');
+const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+
+// Ensure cache directory exists
+function ensureCacheDir() {
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+  }
+}
+
+// Check if cache is valid (less than 7 days old)
+function isCacheValid() {
+  try {
+    if (!fs.existsSync(APPLIST_CACHE_FILE)) {
+      return false;
+    }
+    const stats = fs.statSync(APPLIST_CACHE_FILE);
+    const age = Date.now() - stats.mtime.getTime();
+    return age < CACHE_DURATION;
+  } catch (error) {
+    console.error('Error checking cache validity:', error);
+    return false;
+  }
+}
+
+// Fetch Steam app list from API
+function fetchSteamAppList() {
+  return new Promise((resolve, reject) => {
+    console.log('Fetching Steam app list from API...');
+    https.get(STEAM_APPLIST_URL, (res) => {
+      const chunks = [];
+
+      res.on('data', (chunk) => {
+        chunks.push(chunk);
+      });
+
+      res.on('end', () => {
+        try {
+          const buffer = Buffer.concat(chunks);
+          const data = JSON.parse(buffer.toString('utf8'));
+          console.log(`Successfully fetched ${data.applist.apps.length} apps from Steam`);
+          resolve(data);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }).on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+// Get Steam app list (from cache or fetch fresh)
+async function getSteamAppList() {
+  try {
+    ensureCacheDir();
+
+    // Check if cache is valid
+    if (isCacheValid()) {
+      console.log('Loading Steam app list from cache...');
+      const cachedData = fs.readFileSync(APPLIST_CACHE_FILE, 'utf8');
+      const data = JSON.parse(cachedData);
+      console.log(`Loaded ${data.applist.apps.length} apps from cache`);
+      return data;
+    }
+
+    // Cache is invalid or doesn't exist, fetch fresh data
+    console.log('Cache invalid or missing, fetching fresh Steam app list...');
+    const data = await fetchSteamAppList();
+
+    // Save to cache
+    fs.writeFileSync(APPLIST_CACHE_FILE, JSON.stringify(data), 'utf8');
+    console.log('Steam app list cached successfully');
+
+    return data;
+  } catch (error) {
+    console.error('Error getting Steam app list:', error);
+
+    // If fetch failed but we have old cache, use it anyway
+    if (fs.existsSync(APPLIST_CACHE_FILE)) {
+      console.log('Using expired cache as fallback...');
+      const cachedData = fs.readFileSync(APPLIST_CACHE_FILE, 'utf8');
+      return JSON.parse(cachedData);
+    }
+
+    throw error;
+  }
+}
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -14,9 +108,6 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
-
-  // Open DevTools in development (optional)
-  // mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(() => {
@@ -191,6 +282,24 @@ ipcMain.handle('download-extract-fix', async (event, url, targetFolder, appID, f
       const file = fs.createWriteStream(tempZipPath);
 
       https.get(url, (response) => {
+        // Follow redirects (GitHub releases return 302)
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          const redirectUrl = response.headers.location;
+          console.log('Following redirect to:', redirectUrl);
+          https.get(redirectUrl, (redirectResponse) => {
+            redirectResponse.pipe(file);
+            file.on('finish', () => {
+              file.close();
+              console.log('Download complete');
+              resolve();
+            });
+          }).on('error', (err) => {
+            fs.unlink(tempZipPath, () => {});
+            reject(err);
+          });
+          return;
+        }
+
         if (response.statusCode !== 200) {
           reject(new Error(`Failed to download: ${response.statusCode}`));
           return;
@@ -377,6 +486,31 @@ Your one-stop destination for game fixes and updates.
   }
 });
 
+// Handle Steam app list requests
+ipcMain.handle('get-steam-applist', async () => {
+  try {
+    const data = await getSteamAppList();
+    // Convert to a more efficient lookup format
+    const appMap = {};
+    data.applist.apps.forEach(app => {
+      appMap[app.appid] = app.name;
+    });
+    return {
+      success: true,
+      apps: appMap,
+      totalApps: data.applist.apps.length,
+      cached: isCacheValid()
+    };
+  } catch (error) {
+    console.error('Error in get-steam-applist handler:', error);
+    return {
+      success: false,
+      error: error.message,
+      apps: {}
+    };
+  }
+});
+
 // Handle bypass downloads
 ipcMain.handle('download-bypass', async (event, url, fileName) => {
   const fs = require('fs');
@@ -453,6 +587,98 @@ ipcMain.handle('download-bypass', async (event, url, fileName) => {
     return { success: true, message: 'Bypass downloaded successfully!', path: savePath };
   } catch (error) {
     console.error('Error downloading bypass:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Handle OnlineFix plugin appIDs.txt update
+ipcMain.handle('update-onlinefix-appids', async () => {
+  const fs = require('fs');
+  const https = require('https');
+  const os = require('os');
+
+  try {
+    console.log('Starting OnlineFix plugin appIDs.txt update...');
+
+    // Common Steam installation paths
+    const possiblePaths = [
+      'C:\\Program Files (x86)\\Steam',
+      'C:\\Program Files\\Steam',
+      path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Steam'),
+      path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Steam')
+    ];
+
+    // Find Steam installation
+    let steamPath = null;
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p) && fs.existsSync(path.join(p, 'steam.exe'))) {
+        steamPath = p;
+        console.log('Found Steam at:', steamPath);
+        break;
+      }
+    }
+
+    if (!steamPath) {
+      return { success: false, error: 'Steam installation not found. Please ensure Steam is installed.' };
+    }
+
+    // Check if OnlineFix plugin exists
+    const pluginPath = path.join(steamPath, 'plugins', 'onlinefix');
+    const appIDsPath = path.join(pluginPath, 'appIDs.txt');
+
+    if (!fs.existsSync(pluginPath)) {
+      return { success: false, error: 'OnlineFix plugin not found. Please install the plugin first.' };
+    }
+
+    console.log('Plugin path:', pluginPath);
+    console.log('appIDs.txt path:', appIDsPath);
+
+    // Download the latest appIDs.txt from GitHub
+    const url = 'https://raw.githubusercontent.com/ShayneVi/OnlineFix-Plugin/main/appIDs.txt';
+    console.log('Downloading from:', url);
+
+    const fileContent = await new Promise((resolve, reject) => {
+      https.get(url, (response) => {
+        // Follow redirects
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          const redirectUrl = response.headers.location;
+          console.log('Following redirect to:', redirectUrl);
+          https.get(redirectUrl, (redirectResponse) => {
+            const chunks = [];
+            redirectResponse.on('data', (chunk) => chunks.push(chunk));
+            redirectResponse.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+          }).on('error', reject);
+          return;
+        }
+
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to download: ${response.statusCode}`));
+          return;
+        }
+
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      }).on('error', reject);
+    });
+
+    // Write the new file (replacing existing)
+    fs.writeFileSync(appIDsPath, fileContent, 'utf8');
+    console.log('Successfully updated appIDs.txt');
+
+    // Show notification
+    if (Notification.isSupported()) {
+      const notification = new Notification({
+        title: 'OnlineFix Plugin Updated',
+        body: 'appIDs.txt has been updated successfully!',
+        icon: path.join(__dirname, 'icon.png')
+      });
+      notification.show();
+    }
+
+    return { success: true, message: 'appIDs.txt updated successfully!', path: appIDsPath };
+  } catch (error) {
+    console.error('Error updating OnlineFix appIDs.txt:', error);
     return { success: false, error: error.message };
   }
 });

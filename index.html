@@ -365,7 +365,24 @@
                     try {
                         setBypassGamesLoading(true);
 
-                        // Fetch with pagination support (100 items per page)
+                        // Fetch all Steam app names first
+                        console.log('Fetching Steam app list...');
+                        let steamAppMap = {};
+                        try {
+                            const steamResponse = await fetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
+                            const steamData = await steamResponse.json();
+                            if (steamData.applist && steamData.applist.apps) {
+                                // Create a map of appID -> name for quick lookup
+                                steamData.applist.apps.forEach(app => {
+                                    steamAppMap[app.appid] = app.name;
+                                });
+                                console.log(`✅ Loaded ${Object.keys(steamAppMap).length} Steam app names`);
+                            }
+                        } catch (error) {
+                            console.warn('⚠️ Failed to fetch Steam app list:', error);
+                        }
+
+                        // Fetch bypass games from GitHub releases
                         const response = await fetch('https://api.github.com/repos/ShayneVi/Bypasses/releases/latest?per_page=100');
                         const data = await response.json();
 
@@ -376,35 +393,55 @@
                             const games = data.assets
                                 .filter(asset => asset.name.endsWith('.zip'))
                                 .map((asset, index) => {
-                                    // Convert filename to readable name
-                                    // Example: "A.Plague.Tale.Innocence.zip" -> "A Plague Tale: Innocence"
-                                    let name = asset.name.replace('.zip', '').replace(/\./g, ' ');
+                                    // Extract AppID from filename
+                                    const filenameWithoutZip = asset.name.replace('.zip', '');
 
-                                    // Handle special cases for better formatting
-                                    name = name
-                                        .replace(/\bII\b/g, 'II')
-                                        .replace(/\bIII\b/g, 'III')
-                                        .replace(/\bIV\b/g, 'IV')
-                                        .replace(/\bV\b/g, 'V')
-                                        .replace(/\bVI\b/g, 'VI')
-                                        .replace(/Assassin s Creed/g, "Assassin's Creed")
-                                        .replace(/Tom Clancy s/g, "Tom Clancy's")
-                                        .replace(/Watch Dogs/g, "Watch Dogs")
-                                        .replace(/Far Cry/g, "Far Cry")
-                                        .replace(/Rainbow Six/g, "Rainbow Six")
-                                        .replace(/Ghost Recon/g, "Ghost Recon")
-                                        .replace(/The Division/g, "The Division")
-                                        .replace(/The Crew/g, "The Crew")
-                                        .replace(/Star Wars/g, "Star Wars")
-                                        .replace(/Plague Tale/g, "Plague Tale")
-                                        .replace(/Bypass$/gi, '')
-                                        .replace(/\s+/g, ' ')
-                                        .trim();
+                                    // Try to extract AppID - either pure number or number at start of filename
+                                    let appID = null;
+                                    if (/^\d+$/.test(filenameWithoutZip)) {
+                                        // Pure AppID: "480"
+                                        appID = filenameWithoutZip;
+                                    } else if (/^\d+/.test(filenameWithoutZip)) {
+                                        // Starts with AppID: "812140 1 2" or "812140_part1"
+                                        const match = filenameWithoutZip.match(/^(\d+)/);
+                                        if (match) {
+                                            appID = match[1];
+                                        }
+                                    }
+
+                                    // Get game name from Steam app list
+                                    let gameName = null;
+                                    if (appID && steamAppMap[appID]) {
+                                        gameName = steamAppMap[appID];
+                                    } else if (appID) {
+                                        gameName = `Game ${appID}`;
+                                    } else {
+                                        // Not an appID, use filename as name (old format)
+                                        gameName = filenameWithoutZip.replace(/\./g, ' ')
+                                            .replace(/\bII\b/g, 'II')
+                                            .replace(/\bIII\b/g, 'III')
+                                            .replace(/\bIV\b/g, 'IV')
+                                            .replace(/\bV\b/g, 'V')
+                                            .replace(/\bVI\b/g, 'VI')
+                                            .replace(/Assassin s Creed/g, "Assassin's Creed")
+                                            .replace(/Tom Clancy s/g, "Tom Clancy's")
+                                            .replace(/Watch Dogs/g, "Watch Dogs")
+                                            .replace(/Far Cry/g, "Far Cry")
+                                            .replace(/Rainbow Six/g, "Rainbow Six")
+                                            .replace(/Ghost Recon/g, "Ghost Recon")
+                                            .replace(/The Division/g, "The Division")
+                                            .replace(/The Crew/g, "The Crew")
+                                            .replace(/Star Wars/g, "Star Wars")
+                                            .replace(/Plague Tale/g, "Plague Tale")
+                                            .replace(/Bypass$/gi, '')
+                                            .replace(/\s+/g, ' ')
+                                            .trim();
+                                    }
 
                                     return {
-                                        // Use filename as unique ID to avoid collisions
-                                        id: asset.name.replace('.zip', ''),
-                                        name: name,
+                                        id: filenameWithoutZip,
+                                        appID: appID,
+                                        name: gameName,
                                         filename: asset.name,
                                         size: asset.size,
                                         downloadCount: asset.download_count || 0
@@ -414,7 +451,7 @@
 
                             setBypassGames(games);
                             console.log(`✅ Loaded ${games.length} bypass games from GitHub`);
-                            console.log('First 3 games:', games.slice(0, 3).map(g => g.name));
+                            console.log('First 3 games:', games.slice(0, 3).map(g => `${g.name} (AppID: ${g.appID || 'N/A'})`));
                         }
                     } catch (error) {
                         console.error('❌ Error fetching bypass games from GitHub:', error);
@@ -602,7 +639,7 @@
                     aboutGame: 'ABOUT THIS GAME',
                     coopFeatures: 'Co-Op Features',
                     loadingCoop: 'Loading co-op information...',
-                    coopNotAvailable: 'Co-Op information not available for this game.',
+                    coopNotAvailable: 'No coop info exist on cooptimus.',
                     tags: 'Tags',
                     genres: 'Genres',
                     developers: 'Developers',
@@ -748,7 +785,7 @@
                     aboutGame: 'À PROPOS DE CE JEU',
                     coopFeatures: 'Fonctionnalités Co-Op',
                     loadingCoop: 'Chargement des informations co-op...',
-                    coopNotAvailable: 'Informations Co-Op non disponibles pour ce jeu.',
+                    coopNotAvailable: 'Aucune information coop existe sur cooptimus.',
                     tags: 'Tags',
                     genres: 'Genres',
                     developers: 'Développeurs',
@@ -894,7 +931,7 @@
                     aboutGame: 'ACERCA DE ESTE JUEGO',
                     coopFeatures: 'Características Co-Op',
                     loadingCoop: 'Cargando información co-op...',
-                    coopNotAvailable: 'Información Co-Op no disponible para este juego.',
+                    coopNotAvailable: 'No existe información coop en cooptimus.',
                     tags: 'Etiquetas',
                     genres: 'Géneros',
                     developers: 'Desarrolladores',
@@ -1040,7 +1077,7 @@
                     aboutGame: '关于此游戏',
                     coopFeatures: '合作特性',
                     loadingCoop: '加载合作信息中...',
-                    coopNotAvailable: '此游戏暂无合作信息。',
+                    coopNotAvailable: 'cooptimus上不存在合作信息。',
                     tags: '标签',
                     genres: '类型',
                     developers: '开发者',
@@ -1213,7 +1250,8 @@
             const [allGamesData, setAllGamesData] = useState({});
 
             const GITHUB_USERNAME = 'ShayneVi';
-            const GITHUB_REPO = 'OnlineFix';
+            const GITHUB_REPO_1 = 'OnlineFix1';
+            const GITHUB_REPO_2 = 'OnlineFix2';
             const GAMES_PER_PAGE = 30;
             const VERCEL_BASE_URL = 'https://online-fix-store.vercel.app';
             const steamCache = {};
@@ -1413,17 +1451,25 @@
                 const loadGames = async () => {
                     try {
                         setLoadingMessage('Loading game list...');
+
+                        // Load Steam app list first for instant name lookups
+                        if (window.loadSteamAppList) {
+                            await window.loadSteamAppList();
+                        }
+
                         const text = await fetchFromVercel('appIDs.txt');
                         const appIDsFromFile = text.split(/[\n,]/).map(id => id.trim()).filter(id => id.length > 0);
-                        
+
                         if (appIDsFromFile.length === 0) throw new Error('No App IDs found');
 
                         const gameList = appIDsFromFile.map(appID => ({
                             id: appID,
                             appID: appID,
                             filename: appID + '.zip',
-                            downloadUrl: `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/main/${appID}.zip`,
-                            name: `Game ${appID}`,
+                            // Download URL will be determined at download time by checking both repos
+                            downloadUrl: null,
+                            // Use instant name lookup from Steam app list cache
+                            name: window.getGameNameFromAppID ? window.getGameNameFromAppID(appID) : `Game ${appID}`,
                             headerImage: '',
                             loading: true,
                             tags: [],
@@ -1439,7 +1485,7 @@
 
                         // Now fetch all Steam and Co-Op data
                         await fetchAllGameData(gameList);
-                        
+
                     } catch (error) {
                         console.error('Error loading App IDs:', error);
                         setGames([]);
@@ -1916,8 +1962,27 @@
 
                         // Check if data is valid and has co-op properties
                         if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-                            console.log('✓ Co-Op data received from API!');
-                            setCoopData(data);
+                            // Check if this is mock/placeholder data from the API
+                            // Mock data pattern: maxPlayers=4, onlineCoop=true, localCoop=false, onlineCoopPlayers="4 Players"
+                            const isMockData = (
+                                data.maxPlayers === 4 &&
+                                data.onlineCoop === true &&
+                                data.localCoop === false &&
+                                data.onlineCoopPlayers === "4 Players" &&
+                                data.comboCoop === false &&
+                                data.lanPlay === false &&
+                                data.coopCampaign === true &&
+                                data.localCoopPlayers === null &&
+                                data.popularity === null
+                            );
+
+                            if (isMockData) {
+                                console.log('✗ Co-Op API returned mock/placeholder data - treating as no data');
+                                setCoopData(null);
+                            } else {
+                                console.log('✓ Co-Op data received from API!');
+                                setCoopData(data);
+                            }
                         } else {
                             console.log('✗ Co-Op API returned empty or invalid data');
                             setCoopData(null);
@@ -2457,6 +2522,17 @@
                     'Перед включением режима разработчика, ознакомьтесь с тем что это такое в интернете': { en: 'Before enabling developer mode, read about what it is on the internet', fr: 'Avant d\'activer le mode développeur, renseignez-vous sur ce que c\'est sur Internet', es: 'Antes de habilitar el modo desarrollador, infórmese sobre qué es en Internet', zh: '在启用开发者模式之前，请在互联网上了解它是什么' },
                     'выполняем перезагрузку ПК, если это потребуется': { en: 'restart the PC if necessary', fr: 'redémarrez le PC si nécessaire', es: 'reiniciar la PC si es necesario', zh: '必要时重启电脑' },
                     'Активация Epic Store Fix: (выполняется единожды)': { en: 'Epic Store Fix Activation: (done once)', fr: 'Activation du Fix Epic Store : (fait une fois)', es: 'Activación del Fix Epic Store: (se hace una vez)', zh: 'Epic Store修复激活：（仅一次）' },
+                    'Активация GOG Fix (выполняется единожды)': { en: 'GOG Fix Activation (is done once)', fr: 'Activation du Fix GOG (fait une fois)', es: 'Activación del Fix GOG (se hace una vez)', zh: 'GOG修复激活（仅一次）' },
+                    'Активация GOG Fix': { en: 'GOG Fix Activation', fr: 'Activation du Fix GOG', es: 'Activación del Fix GOG', zh: 'GOG修复激活' },
+                    'Открываем GOG Galaxy': { en: 'Open GOG Galaxy', fr: 'Ouvrez GOG Galaxy', es: 'Abrir GOG Galaxy', zh: '打开 GOG Galaxy' },
+                    'fromкрываем GOG Galaxy': { en: 'Open GOG Galaxy', fr: 'Ouvrez GOG Galaxy', es: 'Abrir GOG Galaxy', zh: '打开 GOG Galaxy' },
+                    'Идем в магазин': { en: 'Go to the store', fr: 'Allons au magasin', es: 'Ir a la tienda', zh: '前往商店' },
+                    'установливать не обязательно': { en: 'installing is not necessary', fr: 'l\'installation n\'est pas nécessaire', es: 'instalar no es necesario', zh: '无需安装' },
+                    'игру нужно именно купить, а not via/отметить купленной': { en: 'the game needs to be specifically purchased, not via/marked as purchased', fr: 'le jeu doit être spécifiquement acheté, non via/marqué comme acheté', es: 'el juego debe comprarse específicamente, no vía/marcar como comprado', zh: '游戏需要特别购买，而不是通过/标记为已购买' },
+                    'Важное примечание, игру нужно именно купить, а not via/отметить купленной': { en: 'Important note: the game needs to be specifically purchased, not via/marked as purchased', fr: 'Note importante : le jeu doit être spécifiquement acheté, non via/marqué comme acheté', es: 'Nota importante: el juego debe comprarse específicamente, no vía/marcar como comprado', zh: '重要提示：游戏需要特别购买，而不是通过/标记为已购买' },
+                    'распаковываем её в любую папку': { en: 'extract it to any folder', fr: 'extrayez-le dans n\'importe quel dossier', es: 'extráelo a cualquier carpeta', zh: '解压到任意文件夹' },
+                    'устанавливать не нужно': { en: 'installing is not necessary', fr: 'l\'installation n\'est pas nécessaire', es: 'no es necesario instalar', zh: '无需安装' },
+                    'в магазин': { en: 'to the store', fr: 'au magasin', es: 'a la tienda', zh: '到商店' },
                     'Как минимум Windows 10 x64 версии не менее 1909 с установленными сервисами': { en: 'At minimum Windows 10 x64 version 1909 or higher with installed services', fr: 'Au minimum Windows 10 x64 version 1909 ou supérieure avec les services installés', es: 'Como mínimo Windows 10 x64 versión 1909 o superior con servicios instalados', zh: '至少 Windows 10 x64 版本 1909 或更高版本并安装服务' },
                     'который находится в папке с игрой': { en: 'which is located in the game folder', fr: 'qui se trouve dans le dossier du jeu', es: 'que se encuentra en la carpeta del juego', zh: '位于游戏文件夹中' },
                     'который расположен в папке с игрой': { en: 'which is located in the game folder', fr: 'qui se trouve dans le dossier du jeu', es: 'que se encuentra en la carpeta del juego', zh: '位于游戏文件夹中' },
@@ -2487,6 +2563,19 @@
                     'к любому серверу': { en: 'to any server', fr: 'à n\'importe quel serveur', es: 'a cualquier servidor', zh: '到任意服务器' },
                     'в папке с игрой': { en: 'in the game folder', fr: 'dans le dossier du jeu', es: 'en la carpeta del juego', zh: '在游戏文件夹中' },
                     'Подключаемся к': { en: 'Connect to', fr: 'Connectons-nous à', es: 'Conectar a', zh: '连接到' },
+
+                    // GOG-specific vocabulary
+                    'магазин': { en: 'store', fr: 'magasin', es: 'tienda', zh: '商店' },
+                    'обязательно': { en: 'necessary', fr: 'nécessaire', es: 'necesario', zh: '必须' },
+                    'именно купить': { en: 'specifically purchase', fr: 'spécifiquement acheter', es: 'específicamente comprar', zh: '特别购买' },
+                    'отметить купленной': { en: 'marked as purchased', fr: 'marqué comme acheté', es: 'marcar como comprado', zh: '标记为已购买' },
+                    'примечание': { en: 'note', fr: 'note', es: 'nota', zh: '注意' },
+                    'нужно': { en: 'necessary', fr: 'nécessaire', es: 'necesario', zh: '需要' },
+                    'устанавливать': { en: 'installing', fr: 'installer', es: 'instalar', zh: '安装' },
+                    'не нужно': { en: 'not necessary', fr: 'pas nécessaire', es: 'no es necesario', zh: '不需要' },
+                    'отметить': { en: 'mark', fr: 'marquer', es: 'marcar', zh: '标记' },
+                    'купленной': { en: 'purchased', fr: 'acheté', es: 'comprado', zh: '已购买' },
+                    'Важное': { en: 'Important', fr: 'Important', es: 'Importante', zh: '重要' },
 
                     // Verbs
                     'Запускаем': { en: 'Launch', fr: 'Lançons', es: 'Iniciar', zh: '启动' },
@@ -2597,6 +2686,9 @@
                     'для': { en: 'for', fr: 'pour', es: 'para', zh: '为了' },
                     'на': { en: 'on', fr: 'sur', es: 'en', zh: '在' },
                     'в': { en: 'in', fr: 'dans', es: 'en', zh: '在' },
+                    'а': { en: 'and', fr: 'et', es: 'y', zh: '和' },
+                    'ее': { en: 'it', fr: 'le', es: 'lo', zh: '它' },
+                    'ее': { en: 'it', fr: 'le', es: 'lo', zh: '它' },
                     'к': { en: 'to', fr: 'à', es: 'a', zh: '到' },
                     'с': { en: 'with', fr: 'avec', es: 'con', zh: '与' },
                     'по': { en: 'via/by', fr: 'par', es: 'por', zh: '通过' },
@@ -2625,6 +2717,17 @@
                     'Как запустить:': { en: 'How to launch:', fr: 'Comment lancer :', es: 'Cómo iniciar:', zh: '如何启动：' },
                     'Требования к системе:': { en: 'System requirements:', fr: 'Configuration requise :', es: 'Requisitos del sistema:', zh: '系统要求：' },
                     'Активация Epic Store Fix: (выполняется единожды)': { en: 'Epic Store Fix Activation: (done once)', fr: 'Activation du Fix Epic Store : (fait une fois)', es: 'Activación del Fix Epic Store: (se hace una vez)', zh: 'Epic Store修复激活：（仅一次）' },
+                    'Активация GOG Fix (выполняется единожды)': { en: 'GOG Fix Activation (is done once)', fr: 'Activation du Fix GOG (fait une fois)', es: 'Activación del Fix GOG (se hace una vez)', zh: 'GOG修复激活（仅一次）' },
+                    'Активация GOG Fix': { en: 'GOG Fix Activation', fr: 'Activation du Fix GOG', es: 'Activación del Fix GOG', zh: 'GOG修复激活' },
+                    'Открываем GOG Galaxy': { en: 'Open GOG Galaxy', fr: 'Ouvrez GOG Galaxy', es: 'Abrir GOG Galaxy', zh: '打开 GOG Galaxy' },
+                    'fromкрываем GOG Galaxy': { en: 'Open GOG Galaxy', fr: 'Ouvrez GOG Galaxy', es: 'Abrir GOG Galaxy', zh: '打开 GOG Galaxy' },
+                    'Идем в магазин': { en: 'Go to the store', fr: 'Allons au magasin', es: 'Ir a la tienda', zh: '前往商店' },
+                    'установливать не обязательно': { en: 'installing is not necessary', fr: 'l\'installation n\'est pas nécessaire', es: 'instalar no es necesario', zh: '无需安装' },
+                    'игру нужно именно купить, а not via/отметить купленной': { en: 'the game needs to be specifically purchased, not via/marked as purchased', fr: 'le jeu doit être spécifiquement acheté, non via/marqué comme acheté', es: 'el juego debe comprarse específicamente, no vía/marcar como comprado', zh: '游戏需要特别购买，而不是通过/标记为已购买' },
+                    'Важное примечание, игру нужно именно купить, а not via/отметить купленной': { en: 'Important note: the game needs to be specifically purchased, not via/marked as purchased', fr: 'Note importante : le jeu doit être spécifiquement acheté, non via/marqué comme acheté', es: 'Nota importante: el juego debe comprarse específicamente, no vía/marcar como comprado', zh: '重要提示：游戏需要特别购买，而不是通过/标记为已购买' },
+                    'распаковываем её в любую папку': { en: 'extract it to any folder', fr: 'extrayez-le dans n\'importe quel dossier', es: 'extráelo a cualquier carpeta', zh: '解压到任意文件夹' },
+                    'устанавливать не нужно': { en: 'installing is not necessary', fr: 'l\'installation n\'est pas nécessaire', es: 'no es necesario instalar', zh: '无需安装' },
+                    'в магазин': { en: 'to the store', fr: 'au magasin', es: 'a la tienda', zh: '到商店' },
                     'Активация Epic Store Fix:': { en: 'Epic Store Fix Activation:', fr: 'Activation du Fix Epic Store :', es: 'Activación del Fix Epic Store:', zh: 'Epic Store修复激活：' },
                     'Онлайн и Схватка': { en: 'Online and Skirmish', fr: 'En ligne et Escarmouche', es: 'En línea y Escaramuza', zh: '在线和遭遇战' },
 
@@ -2697,16 +2800,35 @@
                     .substring(0, 100); // Limit filename length
                 const downloadFileName = `${cleanFileName}.zip`;
 
-                const downloadUrl = game.downloadUrl;
+                // Construct URLs for both repos
+                const repo1Url = `https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO_1}/releases/download/fixes/${game.appID}.zip`;
+                const repo2Url = `https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO_2}/releases/download/fixes/${game.appID}.zip`;
+
+                let downloadUrl = null;
 
                 try {
-                    // Check if file exists
-                    const headResponse = await fetch(downloadUrl, { method: 'HEAD' });
+                    // Check repo1 first
+                    console.log(`Checking ${GITHUB_REPO_1} for ${game.appID}...`);
+                    const headResponse1 = await fetch(repo1Url, { method: 'HEAD' });
 
-                    if (!headResponse.ok) {
-                        // File doesn't exist
-                        alert(`Fix file not available yet for ${game.name}.\n\nYou can search for fixes on Co-Optimus or online-fix.me`);
-                        window.open(`https://www.google.com/search?q=${encodeURIComponent(game.name + ' online fix')}`, '_blank');
+                    // GitHub releases return 302 redirect to CDN, so check for both 200 and 302
+                    if (headResponse1.ok || headResponse1.status === 302) {
+                        console.log(`Found in ${GITHUB_REPO_1}`);
+                        downloadUrl = repo1Url;
+                    } else {
+                        // Check repo2
+                        console.log(`Not found in ${GITHUB_REPO_1}, checking ${GITHUB_REPO_2}...`);
+                        const headResponse2 = await fetch(repo2Url, { method: 'HEAD' });
+
+                        if (headResponse2.ok || headResponse2.status === 302) {
+                            console.log(`Found in ${GITHUB_REPO_2}`);
+                            downloadUrl = repo2Url;
+                        }
+                    }
+
+                    if (!downloadUrl) {
+                        // File doesn't exist in either repo
+                        alert(`No fix found. Please contact support with game name and appid.\n\nGame: ${game.name}\nAppID: ${game.appID}`);
                         return;
                     }
 
@@ -2788,6 +2910,27 @@
 
             const removeFromDownloads = (appID) => {
                 setDownloadHistory(prev => prev.filter(d => d.appID !== appID));
+            };
+
+            const handleUpdateOnlineFixPlugin = async () => {
+                if (!window.electronAPI || !window.electronAPI.updateOnlineFixAppIDs) {
+                    alert('This feature is only available in the desktop app.');
+                    return;
+                }
+
+                try {
+                    addNotification('Updating OnlineFix plugin...', 'info');
+                    const result = await window.electronAPI.updateOnlineFixAppIDs();
+
+                    if (result.success) {
+                        addNotification(result.message, 'success');
+                    } else {
+                        alert(`Update failed: ${result.error}`);
+                    }
+                } catch (error) {
+                    console.error('Error updating OnlineFix plugin:', error);
+                    alert(`Update failed: ${error.message}`);
+                }
             };
 
             // FIX #3: Modified to allow removing ratings by clicking the same star
@@ -4142,7 +4285,7 @@
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                 </svg>
                                                 <div>
-                                                    <div className="font-semibold text-sm text-blue-500 mb-1">Auto-Install Location</div>
+                                                    <div className="font-semibold text-sm text-blue-500 mb-1">Install Location</div>
                                                     <div className="text-xs font-mono">{selectedPlugin.installPath}</div>
                                                 </div>
                                             </div>
@@ -4152,56 +4295,10 @@
                                     {/* Action Buttons */}
                                     <div className="flex gap-3">
                                         <button
-                                            onClick={async () => {
-                                                try {
-                                                    // Fetch latest release
-                                                    const response = await fetch(`https://api.github.com/repos/${selectedPlugin.repo}/releases/latest`);
-                                                    const data = await response.json();
-
-                                                    if (data.assets && data.assets.length > 0) {
-                                                        const asset = data.assets[0]; // Get first asset (usually the .zip)
-                                                        const downloadUrl = asset.browser_download_url;
-
-                                                        if (selectedPlugin.type === 'plugin' && selectedPlugin.installPath) {
-                                                            // Auto-extract to Steam plugins folder
-                                                            const result = await window.electronAPI.downloadAndExtractFix(
-                                                                downloadUrl,
-                                                                selectedPlugin.installPath,
-                                                                '', // No appID needed
-                                                                asset.name
-                                                            );
-
-                                                            if (result.success) {
-                                                                alert(`✅ ${selectedPlugin.name} installed successfully to ${selectedPlugin.installPath}`);
-                                                            } else {
-                                                                alert(`❌ Installation failed: ${result.error}`);
-                                                            }
-                                                        } else {
-                                                            // Let user choose download location
-                                                            const result = await window.electronAPI.downloadBypass(downloadUrl, asset.name);
-                                                            if (result.success) {
-                                                                alert(`✅ ${selectedPlugin.name} downloaded successfully!`);
-                                                            } else {
-                                                                alert(`❌ Download failed: ${result.error}`);
-                                                            }
-                                                        }
-                                                    }
-                                                } catch (error) {
-                                                    console.error('Error downloading plugin:', error);
-                                                    alert('❌ Failed to download. Check console for details.');
-                                                }
-                                            }}
-                                            className="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition shadow-lg flex items-center justify-center gap-2"
-                                        >
-                                            <Download />
-                                            {selectedPlugin.type === 'plugin' ? 'Install Plugin' : 'Download App'}
-                                        </button>
-
-                                        <button
                                             onClick={() => {
                                                 window.electronAPI.openExternal(`https://github.com/${selectedPlugin.repo}`);
                                             }}
-                                            className={`px-6 py-3 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} font-semibold rounded-lg transition flex items-center gap-2`}
+                                            className={`flex-1 px-6 py-3 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} font-semibold rounded-lg transition flex items-center justify-center gap-2`}
                                         >
                                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                                                 <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
@@ -4213,10 +4310,23 @@
                                             onClick={() => {
                                                 window.electronAPI.openExternal(`https://github.com/${selectedPlugin.repo}/releases/latest`);
                                             }}
-                                            className={`px-6 py-3 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} font-semibold rounded-lg transition`}
+                                            className={`flex-1 px-6 py-3 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} font-semibold rounded-lg transition flex items-center justify-center gap-2`}
                                         >
                                             Releases
                                         </button>
+
+                                        {/* Update button - only for OnlineFix Plugin */}
+                                        {selectedPlugin.id === 'onlinefix-plugin' && (
+                                            <button
+                                                onClick={handleUpdateOnlineFixPlugin}
+                                                className="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
+                                            >
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                </svg>
+                                                Update
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>
